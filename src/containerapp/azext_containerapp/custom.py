@@ -27,6 +27,7 @@ from knack.prompting import prompt_y_n
 
 from msrestazure.tools import parse_resource_id, is_valid_resource_id
 from msrest.exceptions import DeserializationError
+import yaml
 
 from ._client_factory import handle_raw_exception
 from ._clients import ManagedEnvironmentClient, ContainerAppClient, GitHubActionClient, DaprComponentClient, StorageClient, AuthClient
@@ -71,6 +72,8 @@ from ._ssh_utils import (SSH_DEFAULT_ENCODING, WebSocketConnection, read_ssh, ge
 from ._constants import (MAXIMUM_SECRET_LENGTH, MICROSOFT_SECRET_SETTING_NAME, FACEBOOK_SECRET_SETTING_NAME, GITHUB_SECRET_SETTING_NAME,
                          GOOGLE_SECRET_SETTING_NAME, TWITTER_SECRET_SETTING_NAME, APPLE_SECRET_SETTING_NAME, CONTAINER_APPS_RP,
                          NAME_INVALID, NAME_ALREADY_EXISTS, ACR_IMAGE_SUFFIX)
+
+from .eject import (_convert_deploy_app, _configure_aks_cluster)
 
 logger = get_logger(__name__)
 
@@ -726,10 +729,8 @@ def show_containerapp(cmd, name, resource_group_name):
     except CLIError as e:
         handle_raw_exception(e)
 
-
 def list_containerapp(cmd, resource_group_name=None, managed_env=None):
     _validate_subscription_registered(cmd, CONTAINER_APPS_RP)
-
     try:
         containerapps = []
         if resource_group_name is None:
@@ -3412,3 +3413,51 @@ def show_auth_config(cmd, resource_group_name, name):
     except:
         pass
     return auth_settings
+
+# name is the name of the container app environment
+def eject_environment(cmd, resource_group_name, environment, new_resource_group=None, new_cluster=None, deploy=False):
+    print(f"Ejecting the environment {environment}")
+
+    # eject into a new AKS cluster named [NAME]-copy into the same resource group
+    _configure_aks_cluster(
+        cmd, 
+        new_resource_group if new_resource_group else resource_group_name, 
+        new_cluster if new_cluster else environment+"-copy", 
+        new_cluster==None,
+    )
+
+    # retrieves all the apps under the environment
+    apps_json = list_containerapp(cmd, resource_group_name=resource_group_name, managed_env=environment)
+
+    # retrieves the secrets, convert to yaml, and deploy 
+    for app in apps_json:
+        app_name = app["name"]
+        secrets = list_secrets(cmd, app_name, resource_group_name, True)    
+
+        # convert the app's json to yaml
+        _convert_deploy_app(
+            app, 
+            app_name,
+            secrets,
+            deploy,
+        )
+
+def eject_app(cmd, resource_group_name, name, new_resource_group=None, new_cluster=None, deploy=False):
+    print(f"Ejecting the app {name}")
+    _configure_aks_cluster(
+        cmd, 
+        new_resource_group if new_resource_group else resource_group_name, 
+        new_cluster if new_cluster else name+"-copy", 
+        new_cluster==None,
+    )
+
+    app_json = show_containerapp(cmd, resource_group_name=resource_group_name, name=name)
+    secrets = list_secrets(cmd, name, resource_group_name, True)    
+
+    # convert the json to yaml
+    _convert_deploy_app(
+        app_json, 
+        name,
+        secrets,
+        deploy,
+    )

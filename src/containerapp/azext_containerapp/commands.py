@@ -42,7 +42,6 @@ def transform_revision_output(rev):
 def transform_revision_list_output(revs):
     return [transform_revision_output(r) for r in revs]
 
-
 def load_command_table(self, _):
     with self.command_group('containerapp') as g:
         g.custom_show_command('show', 'show_containerapp', table_transformer=transform_containerapp_output)
@@ -174,3 +173,7 @@ def load_command_table(self, _):
         g.custom_command('bind', 'bind_hostname', exception_handler=ex_handler_factory())
         g.custom_command('list', 'list_hostname')
         g.custom_command('delete', 'delete_hostname', confirmation=True, exception_handler=ex_handler_factory())
+
+    with self.command_group('containerapp eject') as g:
+        g.custom_command('environment', 'eject_environment')
+        g.custom_command('app', 'eject_app')
