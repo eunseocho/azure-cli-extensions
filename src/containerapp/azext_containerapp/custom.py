@@ -3429,6 +3429,26 @@ def eject_environment(cmd, resource_group_name, environment, new_resource_group=
     # retrieves all the apps under the environment
     apps_json = list_containerapp(cmd, resource_group_name=resource_group_name, managed_env=environment)
 
+    to_crd = {'apiVersion': 0, 'kind': 0, 'metadata': 0, 'annotations': 0, 'controller-gen.kubebuilder.io/version': 0, 
+    'meta.helm.sh/release-name': 0, 'meta.helm.sh/release-namespace': 0, 'labels': 0, 'app.kubernetes.io/managed-by': 0, 'creationTimestamp': 0, 
+    'name': 0, 'spec': 0, 'group': 0, 'names': 0, 'listKind': 0, 'plural': 0, 'singular': 0, 'scope': 0, 'versions': 0, 'schema': 0, 
+    'openAPIV3Schema': 0, 'description': 0, 'properties': 0, 'type': 0, 'configuration': 0, 'activeRevisionsMode': 0, 'default': 0, 'authConfig': 0, 
+    'defaultProvider': 0, 'enabled': 0, 'secretRef': 0, 'dapr': 0, 'appID': 0, 'appPort': 0, 'format': 0, 'appProtocol': 0, 'enableApiLogging': 0, 
+    'httpMaxRequestSize': 0, 'httpReadBufferSize': 0, 'logLevel': 0, 'required': 0, 'identity': 0, 'authenticationEndpointEnabled': 0, 'identities': 0, 
+    'items': 0, 'authenticationEndpoint': 0, 'certificateName': 0, 'clientId': 0, 'principalId': 0, 'resourceId': 0, 'secretUrl': 0, 'tenantId': 0, 
+    'identityHeader': 0, 'secretName': 0, 'siteName': 0, 'ingress': 0, 'allowInsecure': 0, 'customDomains': 0, 'certificateRef': 0, 'hostName': 0, 
+    'external': 0, 'targetPort': 0, 'traffic': 0, 'label': 0, 'latestRevision': 0, 'weight': 'percent', 'revisionName': 0, 'transport': 0, 'registries': 0, 
+    'passwordSecretRef': 0, 'server': 0, 'username': 0, 'secrets': 0, 'value': 0, 'template': 0, 'containers': 0, 'args': 0, 'command': 0, 'env': 0, 
+    'image': 0, 'probes': 0, 'livenessProbe': 0, 'exec': 0, 'failureThreshold': 0, 'httpGet': 0, 'host': 0, 'httpHeaders': 0, 'path': 0, 'port': 0, 
+    'anyOf': 0, 'x-kubernetes-int-or-string': 0, 'scheme': 0, 'initialDelaySeconds': 0, 'periodSeconds': 0, 'successThreshold': 0, 'tcpSocket': 0, 
+    'terminationGracePeriodSeconds': 0, 'timeoutSeconds': 0, 'readinessProbe': 0, 'startupProbe': 0, 'resources': 0, 'cpu': 1, 'ephemeralStorage': 'ephemeral-storage', 
+    'memory': 1, 'components': 0, 'ignoreErrors': 0, 'initTimeout': 0, 'scopes': 0, 'version': 0, 'revisionSuffix': 0, 'scale': 0, 'maxReplicas': 0, 
+    'minReplicas': 0, 'rules': 0, 'auth': 0, 'triggerParameter': 0, 'additionalProperties': 0, 'storage': 0, 'mounts': 0, 'containerName': 0, 
+    'volumeMounts': 0, 'mountPath': 0, 'mountPropagation': 0, 'readOnly': 0, 'subPath': 0, 'subPathExpr': 0, 'volumes': 0, 'azureFileVolumeSource': 0, 
+    'shareName': 0, 'status': 0, 'containerAppProvisioningState': 0, 'containerAppProvisoningError': 0, 'currentActiveRevisionName': 0, 
+    'lastConfigurationState': 0, 'latestCreatedRevisionName': 0, 'latestReadyRevisionName': 0, 'observedGeneration': 0, 'served': 0, 'subresources': 0, 
+    'acceptedNames': 0, 'conditions': 0, 'storedVersions': 0}
+
     # retrieves the secrets, convert to yaml, and deploy 
     for app in apps_json:
         app_name = app["name"]
@@ -3439,6 +3459,7 @@ def eject_environment(cmd, resource_group_name, environment, new_resource_group=
             app, 
             app_name,
             secrets,
+            to_crd,
             deploy,
         )
 
@@ -3452,6 +3473,27 @@ def eject_app(cmd, resource_group_name, name, new_resource_group=None, new_clust
     )
 
     app_json = show_containerapp(cmd, resource_group_name=resource_group_name, name=name)
+
+    to_crd = {'apiVersion': 0, 'kind': 0, 'metadata': 0, 'annotations': 0, 'controller-gen.kubebuilder.io/version': 0, 
+    'meta.helm.sh/release-name': 0, 'meta.helm.sh/release-namespace': 0, 'labels': 0, 'app.kubernetes.io/managed-by': 0, 'creationTimestamp': 0, 
+    'name': 0, 'spec': 0, 'group': 0, 'names': 0, 'listKind': 0, 'plural': 0, 'singular': 0, 'scope': 0, 'versions': 0, 'schema': 0, 
+    'openAPIV3Schema': 0, 'description': 0, 'properties': 0, 'type': 0, 'configuration': 0, 'activeRevisionsMode': 0, 'default': 0, 'authConfig': 0, 
+    'defaultProvider': 0, 'enabled': 0, 'secretRef': 0, 'dapr': 0, 'appID': 0, 'appPort': 0, 'format': 0, 'appProtocol': 0, 'enableApiLogging': 0, 
+    'httpMaxRequestSize': 0, 'httpReadBufferSize': 0, 'logLevel': 0, 'required': 0, 'identity': 0, 'authenticationEndpointEnabled': 0, 'identities': 0, 
+    'items': 0, 'authenticationEndpoint': 0, 'certificateName': 0, 'clientId': 0, 'principalId': 0, 'resourceId': 0, 'secretUrl': 0, 'tenantId': 0, 
+    'identityHeader': 0, 'secretName': 0, 'siteName': 0, 'ingress': 0, 'allowInsecure': 0, 'customDomains': 0, 'certificateRef': 0, 'hostName': 0, 
+    'external': 0, 'targetPort': 0, 'traffic': 0, 'label': 0, 'latestRevision': 0, 'weight': 'percent', 'revisionName': 0, 'transport': 0, 'registries': 0, 
+    'passwordSecretRef': 0, 'server': 0, 'username': 0, 'secrets': 0, 'value': 0, 'template': 0, 'containers': 0, 'args': 0, 'command': 0, 'env': 0, 
+    'image': 0, 'probes': 0, 'livenessProbe': 0, 'exec': 0, 'failureThreshold': 0, 'httpGet': 0, 'host': 0, 'httpHeaders': 0, 'path': 0, 'port': 0, 
+    'anyOf': 0, 'x-kubernetes-int-or-string': 0, 'scheme': 0, 'initialDelaySeconds': 0, 'periodSeconds': 0, 'successThreshold': 0, 'tcpSocket': 0, 
+    'terminationGracePeriodSeconds': 0, 'timeoutSeconds': 0, 'readinessProbe': 0, 'startupProbe': 0, 'resources': 0, 'cpu': 1, 'ephemeralStorage': 'ephemeral-storage', 
+    'memory': 1, 'components': 0, 'ignoreErrors': 0, 'initTimeout': 0, 'scopes': 0, 'version': 0, 'revisionSuffix': 0, 'scale': 0, 'maxReplicas': 0, 
+    'minReplicas': 0, 'rules': 0, 'auth': 0, 'triggerParameter': 0, 'additionalProperties': 0, 'storage': 0, 'mounts': 0, 'containerName': 0, 
+    'volumeMounts': 0, 'mountPath': 0, 'mountPropagation': 0, 'readOnly': 0, 'subPath': 0, 'subPathExpr': 0, 'volumes': 0, 'azureFileVolumeSource': 0, 
+    'shareName': 0, 'status': 0, 'containerAppProvisioningState': 0, 'containerAppProvisoningError': 0, 'currentActiveRevisionName': 0, 
+    'lastConfigurationState': 0, 'latestCreatedRevisionName': 0, 'latestReadyRevisionName': 0, 'observedGeneration': 0, 'served': 0, 'subresources': 0, 
+    'acceptedNames': 0, 'conditions': 0, 'storedVersions': 0}
+
     secrets = list_secrets(cmd, name, resource_group_name, True)    
 
     # convert the json to yaml
@@ -3459,5 +3501,6 @@ def eject_app(cmd, resource_group_name, name, new_resource_group=None, new_clust
         app_json, 
         name,
         secrets,
+        to_crd,
         deploy,
     )
