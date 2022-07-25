@@ -4,6 +4,7 @@
 # --------------------------------------------------------------------------------------------
 # pylint: disable=line-too-long, consider-using-f-string, logging-format-interpolation, inconsistent-return-statements, broad-except, bare-except, too-many-statements, too-many-locals, too-many-boolean-expressions, too-many-branches, too-many-nested-blocks, pointless-statement, expression-not-assigned, unbalanced-tuple-unpacking
 
+import json
 import threading
 import sys
 import time
@@ -3415,19 +3416,26 @@ def show_auth_config(cmd, resource_group_name, name):
     return auth_settings
 
 # name is the name of the container app environment
-def eject_environment(cmd, resource_group_name, environment, new_resource_group=None, new_cluster=None, deploy=False):
-    print(f"Ejecting the environment {environment}")
+def eject_environment(cmd, resource_group_name, name, new_resource_group=None, new_cluster=None, deploy=False):
+    print(f"Ejecting the environment {name}")
 
     # eject into a new AKS cluster named [NAME]-copy into the same resource group
-    _configure_aks_cluster(
+    configured = _configure_aks_cluster(
         cmd, 
         new_resource_group if new_resource_group else resource_group_name, 
-        new_cluster if new_cluster else environment+"-copy", 
+        new_cluster if new_cluster else name+"-copy", 
         new_cluster==None,
     )
 
+    if not configured:
+        return
+        
     # retrieves all the apps under the environment
-    apps_json = list_containerapp(cmd, resource_group_name=resource_group_name, managed_env=environment)
+    apps_json = list_containerapp(cmd, resource_group_name=resource_group_name, managed_env=name)
+
+    # # for local testing
+    # local = json.load(open("sanchit_sample.json"))
+    # apps_json = [local]
 
     to_crd = {'apiVersion': 0, 'kind': 0, 'metadata': 0, 'annotations': 0, 'controller-gen.kubebuilder.io/version': 0, 
     'meta.helm.sh/release-name': 0, 'meta.helm.sh/release-namespace': 0, 'labels': 0, 'app.kubernetes.io/managed-by': 0, 'creationTimestamp': 0, 
@@ -3454,8 +3462,12 @@ def eject_environment(cmd, resource_group_name, environment, new_resource_group=
         app_name = app["name"]
         secrets = list_secrets(cmd, app_name, resource_group_name, True)    
 
+        # # local testing
+        # secrets = None
+
         # convert the app's json to yaml
         _convert_deploy_app(
+            cmd,
             app, 
             app_name,
             secrets,
@@ -3465,12 +3477,15 @@ def eject_environment(cmd, resource_group_name, environment, new_resource_group=
 
 def eject_app(cmd, resource_group_name, name, new_resource_group=None, new_cluster=None, deploy=False):
     print(f"Ejecting the app {name}")
-    _configure_aks_cluster(
+    configured = _configure_aks_cluster(
         cmd, 
         new_resource_group if new_resource_group else resource_group_name, 
         new_cluster if new_cluster else name+"-copy", 
         new_cluster==None,
     )
+
+    if not configured:
+        return
 
     app_json = show_containerapp(cmd, resource_group_name=resource_group_name, name=name)
 
