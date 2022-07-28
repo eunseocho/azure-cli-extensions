@@ -3416,15 +3416,15 @@ def show_auth_config(cmd, resource_group_name, name):
     return auth_settings
 
 # name is the name of the container app environment
-def eject_environment(cmd, resource_group_name, name, new_resource_group=None, new_cluster=None, deploy=False):
+def eject_environment(cmd, resource_group_name, name, new_resource_group=None, ejected_cluster=None, deploy=False):
     print(f"Ejecting the environment {name}")
 
     # eject into a new AKS cluster named [NAME]-copy into the same resource group
     configured = _configure_aks_cluster(
         cmd, 
         new_resource_group if new_resource_group else resource_group_name, 
-        new_cluster if new_cluster else name+"-copy", 
-        new_cluster==None,
+        ejected_cluster if ejected_cluster else name+"-copy", 
+        ejected_cluster==None,
     )
 
     if not configured:
@@ -3458,13 +3458,13 @@ def eject_environment(cmd, resource_group_name, name, new_resource_group=None, n
             deploy,
         )
 
-def eject_app(cmd, resource_group_name, name, new_resource_group=None, new_cluster=None, deploy=False):
+def eject_app(cmd, resource_group_name, name, new_resource_group=None, ejected_cluster=None, deploy=False):
     print(f"Ejecting the app {name}")
     configured = _configure_aks_cluster(
         cmd, 
         new_resource_group if new_resource_group else resource_group_name, 
-        new_cluster if new_cluster else name+"-copy", 
-        new_cluster==None,
+        ejected_cluster if ejected_cluster else name+"-copy", 
+        ejected_cluster==None,
     )
 
     if not configured:

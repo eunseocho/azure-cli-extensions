@@ -341,5 +341,5 @@ def load_arguments(self, _):
 
     with self.argument_context('containerapp eject') as c:
         c.argument('new_resource_group', help='The name of the resource group to eject into')
-        c.argument('new_cluster', help='The name of some existing cluster to eject into')
-        c.argument('deploy', arg_type=get_three_state_flag(), help='Set true to deploy your apps in this environment')
+        c.argument('ejected_cluster', help='The name of some existing cluster to eject into')
+        c.argument('deploy', options_list=['--deploy'], help='Set this flag to deploy your apps in this environment', action='store_true')
