@@ -75,7 +75,7 @@ from ._constants import (MAXIMUM_SECRET_LENGTH, MICROSOFT_SECRET_SETTING_NAME, F
                          GOOGLE_SECRET_SETTING_NAME, TWITTER_SECRET_SETTING_NAME, APPLE_SECRET_SETTING_NAME, CONTAINER_APPS_RP,
                          NAME_INVALID, NAME_ALREADY_EXISTS, ACR_IMAGE_SUFFIX)
 
-from .eject import (_convert_deploy_app, _configure_aks_cluster, _convert_deploy_dapr_component)
+from .eject import (_check_system_requirements, _convert_deploy_app, _configure_aks_cluster, _convert_deploy_dapr_component)
 
 logger = get_logger(__name__)
 
@@ -3391,59 +3391,72 @@ def show_auth_config(cmd, resource_group_name, name):
     return auth_settings
 
 # name is the name of the container app environment
-def eject_environment(cmd, resource_group_name, name, new_resource_group=None, ejected_cluster=None, deploy=False):
+def eject_environment(cmd, resource_group_name, name, ejected_subscription=None, ejected_resource_group=None, ejected_cluster=None, deploy=False):
     print(f"Ejecting the environment {name}")
+
+    if _check_system_requirements() == False:
+        return False
+
+    dapr_components = list_dapr_components(cmd, resource_group_name, name)
+    dapr_component_secrets_pairs = []
+    for component in dapr_components:
+        try:
+            secrets = DaprComponentClient.list_secrets(cmd=cmd, resource_group_name=resource_group_name, name=name, component_name=component["name"])["value"]
+        except Exception:
+            secrets = []
+        dapr_component_secrets_pairs.append((component, secrets))
+
+    # retrieves all the apps under the environment()
+    apps_json = list_containerapp(cmd, resource_group_name=resource_group_name, managed_env=name)
+    app_secrets_pairs = []
+    for app in apps_json:
+        app_name = app["name"]
+        app_secrets_pairs.append((app, list_secrets(cmd, app_name, resource_group_name, True)))   
+
+    current_sub_id = get_subscription_id(cmd.cli_ctx)
+    if ejected_subscription is not None:
+        print("Setting the current subscription to the subscription to be ejected into")
+        cmd.cli_ctx.data['subscription_id'] = ejected_subscription
 
     # eject into a new AKS cluster named [NAME]-copy into the same resource group
     configured = _configure_aks_cluster(
         cmd, 
-        new_resource_group if new_resource_group else resource_group_name, 
+        ejected_resource_group if ejected_resource_group else resource_group_name, 
         ejected_cluster if ejected_cluster else name+"-copy", 
         ejected_cluster==None,
     )
-
     if not configured:
         return
 
-    dapr_components = list_dapr_components(cmd, resource_group_name, name)
-    for component in dapr_components:
-        _convert_deploy_dapr_component(component)
-        
-    # retrieves all the apps under the environment()
-    apps_json = list_containerapp(cmd, resource_group_name=resource_group_name, managed_env=name)
+    for component, secrets in dapr_component_secrets_pairs:  
+        _convert_deploy_dapr_component(component, secrets)
 
-    # # for local testing
-    # local = json.load(open("sanchit_sample.json"))
-    # apps_json = [local]
-
-    # retrieves the secrets, convert to yaml, and deploy 
-    for app in apps_json:
-        app_name = app["name"]
-        secrets = list_secrets(cmd, app_name, resource_group_name, True)    
-
-        # # local testing
-        # secrets = None
-
-        # convert the app's json to yaml
+    for app, secrets in app_secrets_pairs:
         _convert_deploy_app(
             cmd,
             app, 
-            app_name,
+            app["name"],
             secrets,
             deploy,
         )
 
-def eject_app(cmd, resource_group_name, name, new_resource_group=None, ejected_cluster=None, deploy=False):
+    cmd.cli_ctx.data['subscription_id'] = current_sub_id
+
+def eject_app(cmd, resource_group_name, name, ejected_resource_group=None, ejected_cluster=None, deploy=False):
     print(f"Ejecting the app {name}")
     configured = _configure_aks_cluster(
         cmd, 
-        new_resource_group if new_resource_group else resource_group_name, 
+        ejected_resource_group if ejected_resource_group else resource_group_name, 
         ejected_cluster if ejected_cluster else name+"-copy", 
         ejected_cluster==None,
     )
 
     if not configured:
         return
+
+    # TODO: Eject dapr components associated with this app
+    # 1. Get environment name (marked as managed environment id)
+    # 2. Get the dapr components for this specific app
 
     dapr_components = list_dapr_components(cmd, resource_group_name, name)
     for component in dapr_components:

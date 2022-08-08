@@ -1,3 +1,4 @@
+from itertools import cycle
 import subprocess
 import time
 import yaml
@@ -6,8 +7,11 @@ from kubernetes import client, config, utils
 from azure.cli.command_modules.acs.custom import (
     aks_create,
     aks_get_credentials,
+    aks_show,
 )
 from azure.cli.command_modules.acs._client_factory import cf_managed_clusters
+
+from azure.cli.core.commands.client_factory import get_subscription_id
 
 containerapp_template = {'apiVersion': 0, 'kind': 0, 'metadata': 0, 'annotations': 0, 'controller-gen.kubebuilder.io/version': 0, 
 'meta.helm.sh/release-name': 0, 'meta.helm.sh/release-namespace': 0, 'labels': 0, 'app.kubernetes.io/managed-by': 0, 'creationTimestamp': 0, 
@@ -35,7 +39,7 @@ dapr_template = {'apiVersion': 0, 'kind': 0, 'metadata': 0, 'annotations': 0,
 'creationTimestamp': 0, 'name': 0, 'spec': 0, 'group': 0, 'names': 0, 
 'listKind': 0, 'plural': 0, 'singular': 0, 'scope': 0, 'versions': 0, 
 'schema': 0, 'openAPIV3Schema': 0, 'description': 0, 'properties': 0, 
-'type': 0, 'ignoreErrors': 0, 'initTimeout': 0, 'items': 0, 'secretRef': 0, 
+'componentType': 'type', 'ignoreErrors': 0, 'initTimeout': 0, 'items': 0, 'secretRef': 0, 
 'value': 0, 'required': 0, 'scopes': 0, 'secrets': 0, 'version': 0, 'status': 0, 
 'served': 0, 'storage': 0, 'subresources': 0, 'acceptedNames': 0, 'conditions': 0, 
 'storedVersions': 0}
@@ -72,13 +76,11 @@ def _check_system_requirements():
 # creates a new AKS cluster and install k4apps and such
 # TODO: configure the cluster the same way ACA did -- do I need to manually set the number of nodes and such?
 def _configure_aks_cluster(cmd, resource_group_name, cluster, create_cluster):
-    if _check_system_requirements() == False:
-        return False
-
     client = cf_managed_clusters(cmd.cli_ctx)
 
     if create_cluster == True:
-        print(f"Creating a new AKS cluster named {cluster}")
+        print(f"Creating a new AKS cluster named {cluster}", end = " ")
+        # subprocess.run(f"az aks create --name {cluster} --resource-group {resource_group_name}".split(), stderr=subprocess.STDOUT, shell=True)
         aks_create(
             cmd, 
             client=client, 
@@ -87,13 +89,26 @@ def _configure_aks_cluster(cmd, resource_group_name, cluster, create_cluster):
             ssh_key_value=None, 
             no_ssh_key=True
         )
-        # TODO: need to add a check whether the cluster's created or not, so it only proceeds when the cluster exists
+
+        time.sleep(10)
+
+        for _ in range(30):
+            provisioning_state = aks_show(cmd, client, resource_group_name, cluster).provisioning_state
+            if provisioning_state == "Succeeded":
+                print(". ------------ Cluster is created.")
+                break
+            
+            print(".", end = " ")
+
+            time.sleep(5)
+        
         print("Connecting kubectl to the new cluster")
     else:
         print(f"Ejecting into the cluster {cluster} under the resource group {resource_group_name}")
         print("Connecting kubectl to the provided cluster")
 
     aks_get_credentials(cmd, client=client, name=cluster, resource_group_name=resource_group_name)
+    # subprocess.run(f"az aks get-credentials --name {cluster} --resource-group {resource_group_name}".split(), stderr=subprocess.STDOUT, shell=True)
 
     _install_cluster_requirements()
 
@@ -140,7 +155,7 @@ def _install_cluster_requirements():
             shell=True,
         )
 
-def _convert_deploy_dapr_component(json_dict):
+def _convert_deploy_dapr_component(json_dict, secrets):
     name = json_dict["name"]
 
     yaml_dict = {}
@@ -148,16 +163,18 @@ def _convert_deploy_dapr_component(json_dict):
     yaml_dict["kind"] = "DaprComponent"
     yaml_dict["metadata"] = {"name":name, "namespace":"k8se-apps"}
 
-    # not including secrets for now
-    if "secrets" in json_dict["properties"]:
-        json_dict["properties"].pop("secrets")
+    # yaml_dict["spec"] = {"type": json_dict["properties"]["componentType"], "version":"v1", "metadata":{}}
 
-    yaml_dict["spec"] = {"type": json_dict["properties"]["componentType"], "metadata":{}}
-    yaml_dict["spec"]["metadata"] = json_dict["properties"]
+    yaml_dict["spec"] = json_dict["properties"]
 
-    _convert_crd(yaml_dict, dapr_template, name)
+    if "secrets" in yaml_dict["spec"]:
+        yaml_dict["spec"]["secrets"] = secrets
 
-    # _deploy_k8se(yaml_dict)
+    yaml_dict["spec"]["metadata"] = json_dict["properties"]["metadata"]
+
+    file_name = _convert_crd(yaml_dict, dapr_template, name)
+
+    subprocess.run(f"kubectl apply -f {file_name}", stderr=subprocess.STDOUT, shell=True)
 
 def _convert_deploy_app(cmd, json_dict, app_name, secrets, deploy=False):
     yaml_dict = {}
@@ -175,16 +192,14 @@ def _convert_deploy_app(cmd, json_dict, app_name, secrets, deploy=False):
     # set secret 
     yaml_dict["spec"]["configuration"]["secrets"] = secrets
 
-    _convert_crd(yaml_dict, containerapp_template, app_name)
+    file_name = _convert_crd(yaml_dict, containerapp_template, app_name)
 
     if deploy:
-        # TODO: need to debug the _deploy_k8se function
-        # _deploy_k8se(yaml_dict)
-        file_name = app_name + ".yaml"
-        subprocess.run("kubectl apply -f {file_name}", stderr=subprocess.STDOUT, shell=True)
+        subprocess.run(f"kubectl apply -f {file_name}".split(), stderr=subprocess.STDOUT, shell=True)
 
         time.sleep(3)
 
+        # TODO: Look into why it returns 404
         ip = subprocess.run("kubectl -n k8se-system get svc k8se-envoy -o jsonpath=\"{.status.loadBalancer.ingress[0].ip}\"".split(), stdout=subprocess.PIPE, text=True, shell=True)
         ip = ip.stdout.strip('\"')
         subprocess.run(f"curl -H \"Host: {app_name}.k4apps-example.io\" {ip} -v", stderr=subprocess.STDOUT, shell=True)
@@ -203,6 +218,8 @@ def _convert_crd(crd_dict, template, name):
     print()
     print(yaml.dump(crd_dict, indent=4, default_flow_style=False))
     print("-----------------------------------------------------------------------")
+
+    return file_name
 
 def _dfs(json_dict, to_crd_map):
     if json_dict == None or type(json_dict) == bool or type(json_dict) == str or type(json_dict) == int:
@@ -231,9 +248,3 @@ def _dfs(json_dict, to_crd_map):
         
         for k in to_delete:
             json_dict.pop(k)
-
-def _deploy_k8se(crd_dict):
-    config.load_kube_config()
-    k8s_app = client.AppsV1Api()
-    resp = k8s_app.create_namespaced_deployment(body=crd_dict, namespace="k8se-apps")
-    print("Deployment created. status='%s'" % resp.metadata.name)

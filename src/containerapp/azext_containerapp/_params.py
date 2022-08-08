@@ -340,6 +340,7 @@ def load_arguments(self, _):
         c.argument('hostname', help='The custom domain name.')
 
     with self.argument_context('containerapp eject') as c:
-        c.argument('new_resource_group', help='The name of the resource group to eject into')
+        c.argument('ejected_subscription', help='The name of the subscription to eject into')
+        c.argument('ejected_resource_group', help='The name of the resource group to eject into')
         c.argument('ejected_cluster', help='The name of some existing cluster to eject into')
         c.argument('deploy', options_list=['--deploy'], help='Set this flag to deploy your apps in this environment', action='store_true')
