@@ -174,8 +174,6 @@ def load_command_table(self, _):
         g.custom_command('list', 'list_hostname')
         g.custom_command('delete', 'delete_hostname', confirmation=True, exception_handler=ex_handler_factory())
 
-    with self.command_group('containerapp environment') as g:
-        g.custom_command('eject', 'eject_environment')
-    
-    with self.command_group('containerapp app') as g:
-        g.custom_command('eject', 'eject_app')
+    with self.command_group('containerapp eject') as g:
+        g.custom_command('environment', 'eject_environment')
+        g.custom_command('app', 'eject_app')

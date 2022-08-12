@@ -75,7 +75,7 @@ from ._constants import (MAXIMUM_SECRET_LENGTH, MICROSOFT_SECRET_SETTING_NAME, F
                          GOOGLE_SECRET_SETTING_NAME, TWITTER_SECRET_SETTING_NAME, APPLE_SECRET_SETTING_NAME, CONTAINER_APPS_RP,
                          NAME_INVALID, NAME_ALREADY_EXISTS, ACR_IMAGE_SUFFIX)
 
-from .eject import (_check_system_requirements, _convert_deploy_app, _configure_aks_cluster, _convert_deploy_dapr_component)
+from .eject import (_meet_system_requirements, _convert_deploy_app, _configure_aks_cluster, _convert_deploy_dapr_component)
 
 logger = get_logger(__name__)
 
@@ -3394,8 +3394,8 @@ def show_auth_config(cmd, resource_group_name, name):
 def eject_environment(cmd, resource_group_name, name, ejected_subscription=None, ejected_resource_group=None, ejected_cluster=None, deploy=False):
     print(f"Ejecting the environment {name}")
 
-    if _check_system_requirements() == False:
-        return False
+    if not _meet_system_requirements():
+        return
 
     dapr_components = list_dapr_components(cmd, resource_group_name, name)
     dapr_component_secrets_pairs = []
@@ -3406,7 +3406,6 @@ def eject_environment(cmd, resource_group_name, name, ejected_subscription=None,
             secrets = []
         dapr_component_secrets_pairs.append((component, secrets))
 
-    # retrieves all the apps under the environment()
     apps_json = list_containerapp(cmd, resource_group_name=resource_group_name, managed_env=name)
     app_secrets_pairs = []
     for app in apps_json:
@@ -3442,34 +3441,50 @@ def eject_environment(cmd, resource_group_name, name, ejected_subscription=None,
 
     cmd.cli_ctx.data['subscription_id'] = current_sub_id
 
-def eject_app(cmd, resource_group_name, name, ejected_resource_group=None, ejected_cluster=None, deploy=False):
+def eject_app(cmd, resource_group_name, name, ejected_subscription=None, ejected_resource_group=None, ejected_cluster=None, deploy=False):
     print(f"Ejecting the app {name}")
+
+    if _meet_system_requirements() == False:
+        return False
+
+    app_json = show_containerapp(cmd, resource_group_name=resource_group_name, name=name)
+    app_secrets = list_secrets(cmd, name, resource_group_name, True)
+
+    env_name = app_json["properties"]["managedEnvironmentId"].split("/")[-1]
+
+    dapr_components = list_dapr_components(cmd, resource_group_name, env_name)
+    dapr_component_secrets_pairs = []
+    for component in dapr_components:
+        if "scopes" not in component["properties"] or name in component["properties"]["scopes"]:
+            try:
+                secrets = DaprComponentClient.list_secrets(cmd=cmd, resource_group_name=resource_group_name, name=name, component_name=component["name"])["value"]
+            except Exception:
+                secrets = []
+            dapr_component_secrets_pairs.append((component, secrets))
+
+    current_sub_id = get_subscription_id(cmd.cli_ctx)
+    if ejected_subscription is not None:
+        print("Setting the current subscription to the subscription to be ejected into")
+        cmd.cli_ctx.data['subscription_id'] = ejected_subscription
+
     configured = _configure_aks_cluster(
         cmd, 
         ejected_resource_group if ejected_resource_group else resource_group_name, 
         ejected_cluster if ejected_cluster else name+"-copy", 
         ejected_cluster==None,
     )
-
     if not configured:
         return
 
-    # TODO: Eject dapr components associated with this app
-    # 1. Get environment name (marked as managed environment id)
-    # 2. Get the dapr components for this specific app
+    for component, secret in dapr_component_secrets_pairs:
+        _convert_deploy_dapr_component(component, secret)
 
-    dapr_components = list_dapr_components(cmd, resource_group_name, name)
-    for component in dapr_components:
-        _convert_deploy_dapr_component(component)
-
-    app_json = show_containerapp(cmd, resource_group_name=resource_group_name, name=name)
-
-    secrets = list_secrets(cmd, name, resource_group_name, True)    
-
-    # convert the json to yaml
     _convert_deploy_app(
+        cmd,
         app_json, 
         name,
-        secrets,
+        app_secrets,
         deploy,
     )
+
+    cmd.cli_ctx.data['subscription_id'] = current_sub_id

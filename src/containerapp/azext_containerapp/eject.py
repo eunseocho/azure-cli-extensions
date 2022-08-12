@@ -1,8 +1,8 @@
-from itertools import cycle
 import subprocess
 import time
+import requests
 import yaml
-from kubernetes import client, config, utils 
+from kubernetes import client, config
 
 from azure.cli.command_modules.acs.custom import (
     aks_create,
@@ -11,8 +11,12 @@ from azure.cli.command_modules.acs.custom import (
 )
 from azure.cli.command_modules.acs._client_factory import cf_managed_clusters
 
-from azure.cli.core.commands.client_factory import get_subscription_id
+REQUIRED_MIN_HELM_VERSION = "3.1"
+REQUIRED_MIN_KUBERNETES_VERSION = "1.12"
 
+K4APPS_HELM_CHART = "oci://mcr.microsoft.com/k8se/chart --version 1.0.35 --namespace k8se-system --create-namespace --set webhooks.enabled=false --set dapr.enabled=false --set keda.enabled=false --set containerAppController.enabled=true --set genCert=true"
+K4APPS_RELEASE_NAME = "k8se"
+"k8se-system"
 containerapp_template = {'apiVersion': 0, 'kind': 0, 'metadata': 0, 'annotations': 0, 'controller-gen.kubebuilder.io/version': 0, 
 'meta.helm.sh/release-name': 0, 'meta.helm.sh/release-namespace': 0, 'labels': 0, 'app.kubernetes.io/managed-by': 0, 'creationTimestamp': 0, 
 'name': 0, 'spec': 0, 'group': 0, 'names': 0, 'listKind': 0, 'plural': 0, 'singular': 0, 'scope': 0, 'versions': 0, 'schema': 0, 
@@ -44,7 +48,7 @@ dapr_template = {'apiVersion': 0, 'kind': 0, 'metadata': 0, 'annotations': 0,
 'served': 0, 'storage': 0, 'subresources': 0, 'acceptedNames': 0, 'conditions': 0, 
 'storedVersions': 0}
 
-def _check_system_requirements():
+def _meet_system_requirements():
     satisfied = True
 
     check_helm = subprocess.run("helm version --short".split(), check=True, capture_output=True, shell=True)
@@ -55,13 +59,14 @@ def _check_system_requirements():
     else:
         version = check_helm.stdout
         version = version.decode('ascii')
-        if int(version[1]) >= 3 and int(version[3]) >= 1:
+        if int(version[1]) >= int(REQUIRED_MIN_HELM_VERSION[0]) and int(version[3]) >= int(REQUIRED_MIN_HELM_VERSION[2]):
             print("helm is installed")
         else:
             print("helm needs to be upgraded")
             print("https://helm.sh/docs/helm/helm_upgrade/")
             satisfied = False
 
+    # TODO: Just check for the client version
     check_kubectl = subprocess.run("kubectl version".split(), check=True, capture_output=True, shell=True)
     if check_kubectl.returncode != 0:
         print("Please install kubectl")
@@ -75,10 +80,11 @@ def _check_system_requirements():
 
 # creates a new AKS cluster and install k4apps and such
 # TODO: configure the cluster the same way ACA did -- do I need to manually set the number of nodes and such?
-def _configure_aks_cluster(cmd, resource_group_name, cluster, create_cluster):
+def _configure_aks_cluster(cmd, resource_group_name, cluster, create_new_cluster):
     client = cf_managed_clusters(cmd.cli_ctx)
 
-    if create_cluster == True:
+    cluster_created = False
+    if create_new_cluster:
         print(f"Creating a new AKS cluster named {cluster}", end = " ")
         # subprocess.run(f"az aks create --name {cluster} --resource-group {resource_group_name}".split(), stderr=subprocess.STDOUT, shell=True)
         aks_create(
@@ -92,27 +98,33 @@ def _configure_aks_cluster(cmd, resource_group_name, cluster, create_cluster):
 
         time.sleep(10)
 
+        # TODO: Need to debug; doesn't show the status properly
         for _ in range(30):
-            provisioning_state = aks_show(cmd, client, resource_group_name, cluster).provisioning_state
-            if provisioning_state == "Succeeded":
+            if aks_show(cmd, client, resource_group_name, cluster).provisioning_state == "Succeeded":
                 print(". ------------ Cluster is created.")
+                cluster_created = True
                 break
             
             print(".", end = " ")
 
             time.sleep(5)
-        
-        print("Connecting kubectl to the new cluster")
+
     else:
         print(f"Ejecting into the cluster {cluster} under the resource group {resource_group_name}")
         print("Connecting kubectl to the provided cluster")
 
-    aks_get_credentials(cmd, client=client, name=cluster, resource_group_name=resource_group_name)
-    # subprocess.run(f"az aks get-credentials --name {cluster} --resource-group {resource_group_name}".split(), stderr=subprocess.STDOUT, shell=True)
-
-    _install_cluster_requirements()
-
-    return True
+    if create_new_cluster and cluster_created:
+        print("Connecting kubectl to the new cluster")
+        # subprocess.run(f"az aks get-credentials --name {cluster} --resource-group {resource_group_name}".split(), stderr=subprocess.STDOUT, shell=True)
+        aks_get_credentials(cmd, client=client, name=cluster, resource_group_name=resource_group_name)
+        _install_cluster_requirements()
+        return True
+    elif not create_new_cluster:
+        # subprocess.run(f"az aks get-credentials --name {cluster} --resource-group {resource_group_name}".split(), stderr=subprocess.STDOUT, shell=True)
+        aks_get_credentials(cmd, client=client, name=cluster, resource_group_name=resource_group_name)
+        return True
+    else:
+        return False
 
 def _install_cluster_requirements():
     config.load_kube_config()
@@ -143,14 +155,14 @@ def _install_cluster_requirements():
         # upgrading
         print("upgrading k4apps")
         subprocess.run(
-            "helm upgrade k8se oci://mcr.microsoft.com/k8se/chart --version 1.0.35 --namespace k8se-system --create-namespace --set webhooks.enabled=false --set dapr.enabled=false --set keda.enabled=false".split(), 
+            "helm upgrade ".split(), 
             stderr=subprocess.STDOUT, 
             shell=True,
         )  
     else:     
         print("installing k4apps")
         subprocess.run(
-            "helm install k8se oci://mcr.microsoft.com/k8se/chart --version 1.0.35 --namespace k8se-system --create-namespace --set webhooks.enabled=false --set dapr.enabled=false --set keda.enabled=false".split(), 
+            "helm install k8se oci://mcr.microsoft.com/k8se/chart --version 1.0.35 --namespace k8se-system --create-namespace --set webhooks.enabled=false --set dapr.enabled=false --set keda.enabled=false --set containerAppController.enabled=true --set genCert=true".split(), 
             stderr=subprocess.STDOUT, 
             shell=True,
         )
@@ -174,7 +186,8 @@ def _convert_deploy_dapr_component(json_dict, secrets):
 
     file_name = _convert_crd(yaml_dict, dapr_template, name)
 
-    subprocess.run(f"kubectl apply -f {file_name}", stderr=subprocess.STDOUT, shell=True)
+    # subprocess.run(f"kubectl apply -f {file_name}", stderr=subprocess.STDOUT, shell=True)
+    _deploy(yaml_dict, name)
 
 def _convert_deploy_app(cmd, json_dict, app_name, secrets, deploy=False):
     yaml_dict = {}
@@ -192,17 +205,11 @@ def _convert_deploy_app(cmd, json_dict, app_name, secrets, deploy=False):
     # set secret 
     yaml_dict["spec"]["configuration"]["secrets"] = secrets
 
-    file_name = _convert_crd(yaml_dict, containerapp_template, app_name)
+    _convert_crd(yaml_dict, containerapp_template, app_name)
 
     if deploy:
-        subprocess.run(f"kubectl apply -f {file_name}".split(), stderr=subprocess.STDOUT, shell=True)
-
-        time.sleep(3)
-
-        # TODO: Look into why it returns 404
-        ip = subprocess.run("kubectl -n k8se-system get svc k8se-envoy -o jsonpath=\"{.status.loadBalancer.ingress[0].ip}\"".split(), stdout=subprocess.PIPE, text=True, shell=True)
-        ip = ip.stdout.strip('\"')
-        subprocess.run(f"curl -H \"Host: {app_name}.k4apps-example.io\" {ip} -v", stderr=subprocess.STDOUT, shell=True)
+        # subprocess.run(f"kubectl apply -f {file_name}".split(), stderr=subprocess.STDOUT, shell=True)
+        _deploy(yaml_dict, app_name)
 
 def _convert_crd(crd_dict, template, name):
     _dfs(crd_dict, template)
@@ -248,3 +255,75 @@ def _dfs(json_dict, to_crd_map):
         
         for k in to_delete:
             json_dict.pop(k)
+
+def _deploy(app_yaml, app_name):
+    # kubectl apply -f app.yaml
+
+    config.load_kube_config()
+
+    yaml_body = app_yaml
+
+    try:
+        client.CustomObjectsApi().get_namespaced_custom_object(
+            group="k8se.microsoft.com",
+            version="v1alpha1",
+            namespace="k8se-apps",
+            plural="containerapps",
+            name=app_name,
+        )
+
+        # Couldn't get this to work due to resourceVersion error
+        # resp = client.CustomObjectsApi().replace_namespaced_custom_object(
+        #     group="k8se.microsoft.com",
+        #     version="v1alpha1",
+        #     namespace="k8se-apps",
+        #     plural="containerapps",
+        #     name=app_name,
+        #     body=yaml_body,
+        # )
+
+        client.CustomObjectsApi().delete_namespaced_custom_object(
+            group="k8se.microsoft.com",
+            version="v1alpha1",
+            namespace="k8se-apps",
+            plural="containerapps",
+            name=app_name,
+        )
+
+        resp = client.CustomObjectsApi().create_namespaced_custom_object(
+            group="k8se.microsoft.com",
+            version="v1alpha1",
+            namespace="k8se-apps",
+            plural="containerapps",
+            body=yaml_body,
+        )
+        print("Deployment updated for %s" % resp["metadata"]["name"])
+
+    except client.ApiException:
+        resp = client.CustomObjectsApi().create_namespaced_custom_object(
+            group="k8se.microsoft.com",
+            version="v1alpha1",
+            namespace="k8se-apps",
+            plural="containerapps",
+            body=yaml_body,
+        )
+        print("Deployment created for %s" % resp["metadata"]["name"])
+
+# hitting the app
+# def _hit_app(app_name):
+#     # ip = subprocess.run("kubectl -n k8se-system get svc k8se-envoy -o jsonpath=\"{.status.loadBalancer.ingress[0].ip}\"".split(), stdout=subprocess.PIPE, text=True, shell=True)
+#     # ip = ip.stdout.strip('\"')
+#     # subprocess.run(f"curl -H \"Host: {app_name}.k4apps-example.io\" {ip} -v", stderr=subprocess.STDOUT, shell=True)
+
+#     config.load_kube_config()
+#     api = client.CoreV1Api()
+
+#     service = api.read_namespaced_service(name="k8se-envoy", namespace="k8se-system")
+#     ip = service.status.load_balancer.ingress[0].ip
+
+#     headers = {"host": f"{app_name}.k4apps-example.io"}
+
+#     # response = requests.get(f"https://{app_name}.k4apps-example.io:{ip}",)
+#     response = requests.get(f"https://{ip}", headers=headers)
+
+#     return response.status_code
