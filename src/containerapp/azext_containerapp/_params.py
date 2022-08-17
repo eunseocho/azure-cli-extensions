@@ -344,3 +344,4 @@ def load_arguments(self, _):
         c.argument('ejected_resource_group', help='The name of the resource group to eject into')
         c.argument('ejected_cluster', help='The name of some existing cluster to eject into')
         c.argument('deploy', options_list=['--deploy'], help='Set this flag to deploy your apps in this environment', action='store_true')
+        

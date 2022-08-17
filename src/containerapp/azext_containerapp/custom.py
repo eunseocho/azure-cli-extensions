@@ -3425,10 +3425,11 @@ def eject_environment(cmd, resource_group_name, name, ejected_subscription=None,
         ejected_cluster==None,
     )
     if not configured:
+        print("Cluster wasn't configured properly")
         return
 
     for component, secrets in dapr_component_secrets_pairs:  
-        _convert_deploy_dapr_component(component, secrets)
+        _convert_deploy_dapr_component(component, secrets, deploy)
 
     for app, secrets in app_secrets_pairs:
         _convert_deploy_app(
@@ -3477,7 +3478,7 @@ def eject_app(cmd, resource_group_name, name, ejected_subscription=None, ejected
         return
 
     for component, secret in dapr_component_secrets_pairs:
-        _convert_deploy_dapr_component(component, secret)
+        _convert_deploy_dapr_component(component, secret, deploy)
 
     _convert_deploy_app(
         cmd,

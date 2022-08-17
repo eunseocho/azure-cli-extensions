@@ -177,3 +177,4 @@ def load_command_table(self, _):
     with self.command_group('containerapp eject') as g:
         g.custom_command('environment', 'eject_environment')
         g.custom_command('app', 'eject_app')
+        
